@@ -31,7 +31,6 @@ docker compose -f c:/projet-wasm/docker-compose.yml up -d
 docker compose -f c:/projet-wasm/docker-compose.yml down
 ```
 
-## Ce que fait le projet actuellement
 ## Compiler les filtres C++ → WebAssembly
 
 Les fichiers compilés (`builds/filters.js` et `builds/filters.wasm`) sont déjà versionnés. Pour recompiler depuis les sources (`demos/filters.cpp`) via Docker :
@@ -60,13 +59,6 @@ docker run --rm -v "c:/projet-wasm:/src" emscripten/emsdk bash -c \
 - Barre latérale avec les boutons de filtres et un indicateur de statut WebAssembly
 - Export de l'image modifiée en PNG
 
-<<<<<<< HEAD
-### Bridge JS / WebAssembly
-
-- `main.js` charge le module Emscripten (`filters.js`) et attend `onRuntimeInitialized`
-- Chaque filtre alloue la mémoire Wasm (`_malloc`), copie les pixels, appelle la fonction C++, puis récupère le résultat
-- `filters.cpp` contient un stub `apply_filter()` vide — les filtres réels (niveaux de gris, inversion, flou, luminosité) sont à implémenter
-=======
 ### Filtres WebAssembly
 
 Chaque filtre alloue la mémoire Wasm (`_malloc`), copie les pixels, appelle la fonction C++, puis récupère le résultat.
@@ -76,31 +68,12 @@ Chaque filtre alloue la mémoire Wasm (`_malloc`), copie les pixels, appelle la 
 - **Inverser** — `255 - canal`
 - **Flou** — noyau gaussien 3×3 (`[[1,2,1],[2,4,2],[1,2,1]] / 16`)
 - **Luminosité** — delta additif +30
->>>>>>> c122ed2b5b55672e718aea106a85e1c9a9044455
 
 ### Base de données (MySQL via Docker)
 
 - Conteneur `wasm_mysql` — MySQL 8.4, port 3306, sans mot de passe root
 - Schéma initialisé automatiquement depuis `database.sql` au premier démarrage
-<<<<<<< HEAD
-- Table `users` — comptes utilisateurs
-- Table `albums` — albums photo par utilisateur
-- Table `photos` — métadonnées des photos (nom, chemin, dimensions, taille)
-
-## Compiler les filtres C++ (nécessite Emscripten)
-
-```bash
-em++ filters.cpp -O2 \
-    -s WASM=1 \
-    -s EXPORTED_RUNTIME_METHODS='["_malloc","_free","HEAPU8"]' \
-    -s ALLOW_MEMORY_GROWTH=1 \
-    -o filters.js
-```
-
-Cela génère `filters.js` et `filters.wasm` à placer à la racine du projet.
-=======
 - Table `users`, `albums`, `photos`
->>>>>>> c122ed2b5b55672e718aea106a85e1c9a9044455
 
 ## Structure
 
@@ -108,14 +81,6 @@ Cela génère `filters.js` et `filters.wasm` à placer à la racine du projet.
 projet-wasm/
 ├── index.php            ← layout Bootstrap + logique auth PHP
 ├── main.js              ← chargement Wasm + gestion canvas/filtres
-<<<<<<< HEAD
-├── filters.cpp          ← filtres image en C++ (stub pour l'instant)
-├── style.css            ← styles
-├── database.sql         ← schéma MySQL + données initiales (admin)
-├── docker-compose.yml   ← conteneur MySQL 8.4
-└── config/
-    └── db.php           ← connexion PDO MySQL
-=======
 ├── style.css            ← styles
 ├── database.sql         ← schéma MySQL + données initiales (admin)
 ├── docker-compose.yml   ← conteneur MySQL 8.4
@@ -126,5 +91,4 @@ projet-wasm/
 │   └── filters.wasm     ← binaire WebAssembly
 └── config/
     └── db.php           ← connexion PDO MySQL (non versionné)
->>>>>>> c122ed2b5b55672e718aea106a85e1c9a9044455
 ```

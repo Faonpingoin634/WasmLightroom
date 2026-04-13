@@ -122,6 +122,19 @@ h1 span.text-primary {
   font-size: 0.8rem;
 }
 
+.slider-label {
+  font-size: 0.82rem;
+  color: #444;
+  margin-bottom: 0.2rem;
+}
+
+.slider-label span:last-child {
+  font-weight: 600;
+  color: #0078d4;
+  min-width: 2rem;
+  text-align: right;
+}
+
 .login-wrapper {
   min-height: 100vh;
   display: flex;
