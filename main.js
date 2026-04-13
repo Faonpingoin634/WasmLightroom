@@ -51,6 +51,7 @@ function loadImage(file) {
       [
         "btn-original",
         "btn-grayscale",
+        "btn-sepia",
         "btn-invert",
         "btn-blur",
         "btn-brightness",
@@ -103,16 +104,19 @@ document.getElementById("btn-original").addEventListener("click", () => {
 
 document
   .getElementById("btn-grayscale")
-  .addEventListener("click", () => applyWasmFilter("filter"));
+  .addEventListener("click", () => applyWasmFilter("grayscale"));
+document
+  .getElementById("btn-sepia")
+  .addEventListener("click", () => applyWasmFilter("sepia"));
 document
   .getElementById("btn-invert")
-  .addEventListener("click", () => applyWasmFilter("filter"));
+  .addEventListener("click", () => applyWasmFilter("invert"));
 document
   .getElementById("btn-blur")
-  .addEventListener("click", () => applyWasmFilter("filter"));
+  .addEventListener("click", () => applyWasmFilter("blur"));
 document
   .getElementById("btn-brightness")
-  .addEventListener("click", () => applyWasmFilter("filter"));
+  .addEventListener("click", () => applyWasmFilter("brightness"));
 
 document.getElementById("btn-export").addEventListener("click", () => {
   const link = document.createElement("a");

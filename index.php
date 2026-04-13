@@ -103,6 +103,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
                 <p class="text-muted small">Filtres (via Wasm)</p>
 
                 <button class="btn btn-outline-light btn-filter" id="btn-grayscale" disabled>Niveaux de gris</button>
+                <button class="btn btn-outline-light btn-filter" id="btn-sepia" disabled>Sépia</button>
                 <button class="btn btn-outline-light btn-filter" id="btn-invert" disabled>Inverser</button>
                 <button class="btn btn-outline-light btn-filter" id="btn-blur" disabled>Flou</button>
                 <button class="btn btn-outline-light btn-filter" id="btn-brightness" disabled>Luminosité +</button>
@@ -121,7 +122,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="filters.js"></script>
+<script src="builds/filters.js"></script>
 <script src="main.js"></script>
 <?php endif; ?>
 </body>
