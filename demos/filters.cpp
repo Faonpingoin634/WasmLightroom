@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <algorithm>
+#include <cmath>
 #include <emscripten.h>
 
 extern "C" {
@@ -69,13 +70,23 @@ void apply_blur(uint8_t* data, int width, int height) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-void apply_brightness(uint8_t* data, int width, int height) {
-    const int delta = 30;
+void apply_brightness(uint8_t* data, int width, int height, int delta) {
     int numPixels = width * height;
     for (int i = 0; i < numPixels; i++) {
-        data[i * 4]     = (uint8_t)std::min(255, (int)data[i * 4]     + delta);
-        data[i * 4 + 1] = (uint8_t)std::min(255, (int)data[i * 4 + 1] + delta);
-        data[i * 4 + 2] = (uint8_t)std::min(255, (int)data[i * 4 + 2] + delta);
+        data[i * 4]     = (uint8_t)std::min(255, std::max(0, (int)data[i * 4]     + delta));
+        data[i * 4 + 1] = (uint8_t)std::min(255, std::max(0, (int)data[i * 4 + 1] + delta));
+        data[i * 4 + 2] = (uint8_t)std::min(255, std::max(0, (int)data[i * 4 + 2] + delta));
+    }
+}
+
+EMSCRIPTEN_KEEPALIVE
+void apply_contrast(uint8_t* data, int width, int height, int value) {
+    float factor = (259.0f * (value + 255)) / (255.0f * (259 - value));
+    int numPixels = width * height;
+    for (int i = 0; i < numPixels; i++) {
+        data[i * 4]     = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i * 4]     - 128) + 128));
+        data[i * 4 + 1] = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i * 4 + 1] - 128) + 128));
+        data[i * 4 + 2] = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i * 4 + 2] - 128) + 128));
     }
 }
 

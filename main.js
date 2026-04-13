@@ -54,8 +54,9 @@ function loadImage(file) {
         "btn-sepia",
         "btn-invert",
         "btn-blur",
-        "btn-brightness",
         "btn-export",
+        "slider-brightness",
+        "slider-contrast",
       ].forEach((id) => (document.getElementById(id).disabled = false));
     };
     img.src = e.target.result;
@@ -98,6 +99,34 @@ function applyWasmFilter(filterName) {
   ctx.putImageData(imageData, 0, 0);
 }
 
+function applyWasmFilterWithValue(filterName, value) {
+  if (!wasmModule || !originalImageData) return;
+
+  const imageData = new ImageData(
+    new Uint8ClampedArray(originalImageData.data),
+    originalImageData.width,
+    originalImageData.height,
+  );
+
+  const { width, height, data } = imageData;
+  const numBytes = data.length;
+
+  const ptr = wasmModule._malloc(numBytes);
+  wasmModule.HEAPU8.set(data, ptr);
+
+  const fnName = `_apply_${filterName}`;
+  if (typeof wasmModule[fnName] === "function") {
+    wasmModule[fnName](ptr, width, height, value);
+  } else {
+    console.warn(`Fonction Wasm "${fnName}" introuvable.`);
+  }
+
+  data.set(wasmModule.HEAPU8.subarray(ptr, ptr + numBytes));
+  wasmModule._free(ptr);
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
 document.getElementById("btn-original").addEventListener("click", () => {
   if (originalImageData) ctx.putImageData(originalImageData, 0, 0);
 });
@@ -114,9 +143,16 @@ document
 document
   .getElementById("btn-blur")
   .addEventListener("click", () => applyWasmFilter("blur"));
-document
-  .getElementById("btn-brightness")
-  .addEventListener("click", () => applyWasmFilter("brightness"));
+
+document.getElementById("slider-brightness").addEventListener("input", (e) => {
+  document.getElementById("val-brightness").textContent = e.target.value;
+  applyWasmFilterWithValue("brightness", parseInt(e.target.value));
+});
+
+document.getElementById("slider-contrast").addEventListener("input", (e) => {
+  document.getElementById("val-contrast").textContent = e.target.value;
+  applyWasmFilterWithValue("contrast", parseInt(e.target.value));
+});
 
 document.getElementById("btn-export").addEventListener("click", () => {
   const link = document.createElement("a");

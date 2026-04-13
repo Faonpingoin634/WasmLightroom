@@ -106,7 +106,18 @@ $isLoggedIn = isset($_SESSION['user_id']);
                 <button class="btn btn-outline-light btn-filter" id="btn-sepia" disabled>Sépia</button>
                 <button class="btn btn-outline-light btn-filter" id="btn-invert" disabled>Inverser</button>
                 <button class="btn btn-outline-light btn-filter" id="btn-blur" disabled>Flou</button>
-                <button class="btn btn-outline-light btn-filter" id="btn-brightness" disabled>Luminosité +</button>
+
+                <hr class="border-secondary">
+                <p class="text-muted small">Ajustements (via Wasm)</p>
+
+                <div class="mb-3">
+                    <label class="slider-label d-flex justify-content-between"><span>Luminosité</span><span id="val-brightness">0</span></label>
+                    <input type="range" class="form-range" id="slider-brightness" min="-100" max="100" value="0" disabled>
+                </div>
+                <div class="mb-3">
+                    <label class="slider-label d-flex justify-content-between"><span>Contraste</span><span id="val-contrast">0</span></label>
+                    <input type="range" class="form-range" id="slider-contrast" min="-100" max="100" value="0" disabled>
+                </div>
 
                 <hr class="border-secondary">
                 <button class="btn btn-success btn-filter" id="btn-export" disabled>Exporter (PNG)</button>
