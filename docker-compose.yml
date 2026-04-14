@@ -13,5 +13,19 @@ services:
       - ./database.sql:/docker-entrypoint-initdb.d/database.sql
       - mysql_data:/var/lib/mysql
 
+  php:
+    image: webdevops/php-apache:8.3
+    container_name: wasm_php
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/app
+    depends_on:
+      - mysql
+    environment:
+      - WEB_DOCUMENT_ROOT=/app
+      - DB_HOST=mysql
+
 volumes:
   mysql_data:

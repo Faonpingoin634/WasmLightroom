@@ -23,15 +23,16 @@ CREATE TABLE IF NOT EXISTS albums (
 );
 
 CREATE TABLE IF NOT EXISTS photos (
-    id         INT UNSIGNED     NOT NULL AUTO_INCREMENT,
-    album_id   INT UNSIGNED     NOT NULL,
-    user_id    INT UNSIGNED     NOT NULL,
-    filename   VARCHAR(255)     NOT NULL,
-    filepath   VARCHAR(500)     NOT NULL,
-    filesize   INT UNSIGNED     NOT NULL DEFAULT 0,
+    id         INT UNSIGNED      NOT NULL AUTO_INCREMENT,
+    album_id   INT UNSIGNED      NOT NULL,
+    user_id    INT UNSIGNED      NOT NULL,
+    filename   VARCHAR(255)      NOT NULL,
+    filepath   VARCHAR(500)      NOT NULL,
+    filesize   INT UNSIGNED      NOT NULL DEFAULT 0,
     width      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
     height     SMALLINT UNSIGNED NOT NULL DEFAULT 0,
-    created_at DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    recipe     JSON              DEFAULT NULL,
+    created_at DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE

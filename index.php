@@ -2,9 +2,51 @@
 session_start();
 require_once __DIR__ . '/config/db.php';
 
-$error = '';
+$error   = '';
+$success = '';
+$authMode = $_GET['mode'] ?? 'login'; // 'login' | 'register'
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'login') {
+// --- Inscription ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register') {
+    $username  = trim($_POST['username'] ?? '');
+    $email     = trim($_POST['email'] ?? '');
+    $password  = $_POST['password'] ?? '';
+    $password2 = $_POST['password2'] ?? '';
+
+    if ($username === '' || $email === '' || $password === '') {
+        $error = 'Veuillez remplir tous les champs.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $error = 'Adresse e-mail invalide.';
+    } elseif (strlen($password) < 6) {
+        $error = 'Le mot de passe doit contenir au moins 6 caractères.';
+    } elseif ($password !== $password2) {
+        $error = 'Les mots de passe ne correspondent pas.';
+    } else {
+        try {
+            $pdo  = getPDO();
+            $stmt = $pdo->prepare('SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1');
+            $stmt->execute([$username, $email]);
+            if ($stmt->fetch()) {
+                $error = 'Ce nom d\'utilisateur ou cet e-mail est déjà utilisé.';
+            } else {
+                $hash = password_hash($password, PASSWORD_BCRYPT);
+                $pdo->prepare('INSERT INTO users (username, email, password) VALUES (?, ?, ?)')
+                    ->execute([$username, $email, $hash]);
+                $userId = $pdo->lastInsertId();
+                // Crée un album par défaut pour le nouvel utilisateur
+                $pdo->prepare('INSERT INTO albums (user_id, name) VALUES (?, ?)')
+                    ->execute([$userId, 'Mon album']);
+                $success  = 'Compte créé ! Vous pouvez maintenant vous connecter.';
+                $authMode = 'login';
+            }
+        } catch (Exception $e) {
+            $error = 'Erreur serveur : ' . $e->getMessage();
+        }
+    }
+}
+
+// --- Connexion ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
@@ -27,7 +69,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-if (isset($_POST['action']) && $_POST['action'] === 'logout') {
+// --- Déconnexion ---
+if (($_POST['action'] ?? '') === 'logout') {
     session_destroy();
     header('Location: ' . $_SERVER['PHP_SELF']);
     exit;
@@ -47,11 +90,29 @@ $isLoggedIn = isset($_SESSION['user_id']);
 <body>
 <?php if (!$isLoggedIn): ?>
 <div class="container d-flex justify-content-center align-items-center min-vh-100">
-    <div class="card p-4 shadow" style="width:360px">
-        <h4 class="text-center mb-4">Connexion</h4>
+    <div class="card p-4 shadow" style="width:380px">
+
+        <!-- Onglets Login / Inscription -->
+        <ul class="nav nav-tabs mb-4">
+            <li class="nav-item">
+                <a class="nav-link <?= $authMode === 'login' ? 'active' : '' ?>"
+                   href="?mode=login">Connexion</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?= $authMode === 'register' ? 'active' : '' ?>"
+                   href="?mode=register">Inscription</a>
+            </li>
+        </ul>
+
         <?php if ($error !== ''): ?>
             <div class="alert alert-danger py-2"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
+        <?php if ($success !== ''): ?>
+            <div class="alert alert-success py-2"><?= htmlspecialchars($success) ?></div>
+        <?php endif; ?>
+
+        <?php if ($authMode === 'login'): ?>
+        <!-- Formulaire connexion -->
         <form method="POST">
             <input type="hidden" name="action" value="login">
             <div class="mb-3">
@@ -64,6 +125,31 @@ $isLoggedIn = isset($_SESSION['user_id']);
             </div>
             <button type="submit" class="btn btn-primary w-100">Se connecter</button>
         </form>
+
+        <?php else: ?>
+        <!-- Formulaire inscription -->
+        <form method="POST">
+            <input type="hidden" name="action" value="register">
+            <div class="mb-3">
+                <label class="form-label">Nom d'utilisateur</label>
+                <input type="text" name="username" class="form-control" required autofocus>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Adresse e-mail</label>
+                <input type="email" name="email" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Mot de passe <small class="text-muted">(min. 6 caractères)</small></label>
+                <input type="password" name="password" class="form-control" required minlength="6">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Confirmer le mot de passe</label>
+                <input type="password" name="password2" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-success w-100">Créer mon compte</button>
+        </form>
+        <?php endif; ?>
+
     </div>
 </div>
 <?php else: ?>
@@ -86,6 +172,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
                     <input type="file" id="file-input" accept="image/*" class="d-none">
                 </div>
                 <canvas id="main-canvas"></canvas>
+                <div id="zone-cursor" style="position:fixed;pointer-events:none;display:none;border:2px dashed gold;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,0.4);"></div>
             </div>
         </div>
 
@@ -120,7 +207,19 @@ $isLoggedIn = isset($_SESSION['user_id']);
                 </div>
 
                 <hr class="border-secondary">
+                <p class="text-muted small">Retouche ciblée</p>
+
+                <button class="btn btn-outline-warning btn-filter" id="btn-zone-mode" disabled>Mode zone : OFF</button>
+
+                <div id="zone-controls" style="display:none" class="mt-2">
+                    <label class="slider-label d-flex justify-content-between"><span>Rayon</span><span id="val-zone-radius">150</span></label>
+                    <input type="range" class="form-range" id="slider-zone-radius" min="10" max="600" value="150">
+                    <small class="text-muted">Cliquez sur l'image pour appliquer le filtre actif dans la zone.</small>
+                </div>
+
+                <hr class="border-secondary">
                 <button class="btn btn-success btn-filter" id="btn-export" disabled>Exporter (PNG)</button>
+                <button class="btn btn-primary btn-filter" id="btn-save" disabled>Sauvegarder</button>
 
                 <hr class="border-secondary">
                 <div>

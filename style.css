@@ -16,6 +16,7 @@ h1 span.text-primary {
 }
 
 #canvas-container {
+  position: relative;
   background: #f0f0f0;
   border: 2px dashed #aaa;
   border-radius: 4px;
