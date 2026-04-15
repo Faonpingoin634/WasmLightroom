@@ -14,12 +14,21 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS albums (
-    id         INT UNSIGNED     NOT NULL AUTO_INCREMENT,
-    user_id    INT UNSIGNED     NOT NULL,
-    name       VARCHAR(120)     NOT NULL,
-    created_at DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id         INT UNSIGNED                          NOT NULL AUTO_INCREMENT,
+    user_id    INT UNSIGNED                          NOT NULL,
+    name       VARCHAR(120)                          NOT NULL,
+    visibility ENUM('private','public','shared')     NOT NULL DEFAULT 'private',
+    created_at DATETIME                              NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS album_shares (
+    album_id   INT UNSIGNED NOT NULL,
+    user_id    INT UNSIGNED NOT NULL,
+    PRIMARY KEY (album_id, user_id),
+    FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS photos (

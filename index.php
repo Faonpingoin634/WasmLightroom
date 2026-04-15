@@ -1,81 +1,10 @@
 <?php
 session_start();
 require_once __DIR__ . '/config/db.php';
+require_once __DIR__ . '/controllers/auth.php';
 
-$error   = '';
-$success = '';
-$authMode = $_GET['mode'] ?? 'login'; // 'login' | 'register'
-
-// --- Inscription ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register') {
-    $username  = trim($_POST['username'] ?? '');
-    $email     = trim($_POST['email'] ?? '');
-    $password  = $_POST['password'] ?? '';
-    $password2 = $_POST['password2'] ?? '';
-
-    if ($username === '' || $email === '' || $password === '') {
-        $error = 'Veuillez remplir tous les champs.';
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $error = 'Adresse e-mail invalide.';
-    } elseif (strlen($password) < 6) {
-        $error = 'Le mot de passe doit contenir au moins 6 caractères.';
-    } elseif ($password !== $password2) {
-        $error = 'Les mots de passe ne correspondent pas.';
-    } else {
-        try {
-            $pdo  = getPDO();
-            $stmt = $pdo->prepare('SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1');
-            $stmt->execute([$username, $email]);
-            if ($stmt->fetch()) {
-                $error = 'Ce nom d\'utilisateur ou cet e-mail est déjà utilisé.';
-            } else {
-                $hash = password_hash($password, PASSWORD_BCRYPT);
-                $pdo->prepare('INSERT INTO users (username, email, password) VALUES (?, ?, ?)')
-                    ->execute([$username, $email, $hash]);
-                $userId = $pdo->lastInsertId();
-                // Crée un album par défaut pour le nouvel utilisateur
-                $pdo->prepare('INSERT INTO albums (user_id, name) VALUES (?, ?)')
-                    ->execute([$userId, 'Mon album']);
-                $success  = 'Compte créé ! Vous pouvez maintenant vous connecter.';
-                $authMode = 'login';
-            }
-        } catch (Exception $e) {
-            $error = 'Erreur serveur : ' . $e->getMessage();
-        }
-    }
-}
-
-// --- Connexion ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
-    $username = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
-
-    if ($username !== '' && $password !== '') {
-        $pdo  = getPDO();
-        $stmt = $pdo->prepare('SELECT id, password FROM users WHERE username = ? LIMIT 1');
-        $stmt->execute([$username]);
-        $user = $stmt->fetch();
-
-        if ($user && password_verify($password, $user['password'])) {
-            $_SESSION['user_id']  = $user['id'];
-            $_SESSION['username'] = $username;
-            header('Location: ' . $_SERVER['PHP_SELF']);
-            exit;
-        } else {
-            $error = 'Identifiants invalides.';
-        }
-    } else {
-        $error = 'Veuillez remplir tous les champs.';
-    }
-}
-
-// --- Déconnexion ---
-if (($_POST['action'] ?? '') === 'logout') {
-    session_destroy();
-    header('Location: ' . $_SERVER['PHP_SELF']);
-    exit;
-}
-
+$pdo = getPDO();
+['error' => $error, 'success' => $success, 'authMode' => $authMode] = handleAuth($pdo);
 $isLoggedIn = isset($_SESSION['user_id']);
 ?>
 <!DOCTYPE html>
@@ -92,15 +21,12 @@ $isLoggedIn = isset($_SESSION['user_id']);
 <div class="container d-flex justify-content-center align-items-center min-vh-100">
     <div class="card p-4 shadow" style="width:380px">
 
-        <!-- Onglets Login / Inscription -->
         <ul class="nav nav-tabs mb-4">
             <li class="nav-item">
-                <a class="nav-link <?= $authMode === 'login' ? 'active' : '' ?>"
-                   href="?mode=login">Connexion</a>
+                <a class="nav-link <?= $authMode === 'login' ? 'active' : '' ?>" href="?mode=login">Connexion</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link <?= $authMode === 'register' ? 'active' : '' ?>"
-                   href="?mode=register">Inscription</a>
+                <a class="nav-link <?= $authMode === 'register' ? 'active' : '' ?>" href="?mode=register">Inscription</a>
             </li>
         </ul>
 
@@ -112,7 +38,6 @@ $isLoggedIn = isset($_SESSION['user_id']);
         <?php endif; ?>
 
         <?php if ($authMode === 'login'): ?>
-        <!-- Formulaire connexion -->
         <form method="POST">
             <input type="hidden" name="action" value="login">
             <div class="mb-3">
@@ -125,9 +50,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
             </div>
             <button type="submit" class="btn btn-primary w-100">Se connecter</button>
         </form>
-
         <?php else: ?>
-        <!-- Formulaire inscription -->
         <form method="POST">
             <input type="hidden" name="action" value="register">
             <div class="mb-3">
@@ -156,11 +79,15 @@ $isLoggedIn = isset($_SESSION['user_id']);
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="mb-0">Éditeur d'images <span class="text-primary">WebAssembly</span></h1>
-        <form method="POST" class="mb-0">
-            <input type="hidden" name="action" value="logout">
-            <span class="me-3 text-muted">Connecté : <strong><?= htmlspecialchars($_SESSION['username']) ?></strong></span>
-            <button type="submit" class="btn btn-sm btn-outline-danger">Déconnexion</button>
-        </form>
+        <div class="d-flex align-items-center gap-3">
+            <a href="feed.php" class="btn btn-sm btn-outline-secondary">Feed</a>
+            <a href="albums.php" class="btn btn-sm btn-outline-secondary">Mes albums</a>
+            <form method="POST" class="mb-0">
+                <input type="hidden" name="action" value="logout">
+                <span class="me-3 text-muted">Connecté : <strong><?= htmlspecialchars($_SESSION['username']) ?></strong></span>
+                <button type="submit" class="btn btn-sm btn-outline-danger">Déconnexion</button>
+            </form>
+        </div>
     </div>
 
     <div class="row g-4">
@@ -172,7 +99,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
                     <input type="file" id="file-input" accept="image/*" class="d-none">
                 </div>
                 <canvas id="main-canvas"></canvas>
-                <div id="zone-cursor" style="position:fixed;pointer-events:none;display:none;border:2px dashed gold;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,0.4);"></div>
+                <div id="zone-cursor" style="position:fixed;pointer-events:none;display:none;border:2px dashed #000;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,0.1);"></div>
             </div>
         </div>
 
@@ -183,6 +110,14 @@ $isLoggedIn = isset($_SESSION['user_id']);
                 <div class="mb-3">
                     <span id="wasm-status" class="badge bg-warning">WebAssembly : chargement...</span>
                 </div>
+
+                <p class="text-muted small">Historique</p>
+                <div class="d-flex gap-2 mb-2">
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" id="btn-undo" disabled title="Ctrl+Z">&#8617; Annuler</button>
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" id="btn-redo" disabled title="Ctrl+Y">&#8618; Rétablir</button>
+                </div>
+
+                <hr class="border-secondary">
 
                 <button class="btn btn-secondary btn-filter" id="btn-original" disabled>Image originale</button>
 
@@ -233,7 +168,7 @@ $isLoggedIn = isset($_SESSION['user_id']);
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="builds/filters.js"></script>
-<script src="main.js"></script>
+<script type="module" src="js/main.js"></script>
 <?php endif; ?>
 </body>
 </html>
