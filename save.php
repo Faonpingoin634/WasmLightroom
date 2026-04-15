@@ -31,8 +31,8 @@ try {
     $pdo = getPDO();
 
     if ($photoId !== null) {
-        $stmt = $pdo->prepare('UPDATE photos SET recipe = ? WHERE id = ? AND user_id = ?');
-        $stmt->execute([$recipeRaw, $photoId, $userId]);
+        $pdo->prepare('UPDATE photos SET recipe = ? WHERE id = ? AND user_id = ?')
+            ->execute([$recipeRaw, $photoId, $userId]);
         echo json_encode(['success' => true, 'id' => $photoId]);
         exit;
     }
@@ -63,7 +63,12 @@ try {
         $albumId = (int) $album['id'];
     }
 
-    $ext       = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    $ext         = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowedExts, true)) {
+        echo json_encode(['success' => false, 'error' => 'Extension non autorisée.']);
+        exit;
+    }
     $safename  = uniqid('orig_', true) . '.' . $ext;
     $uploadDir = __DIR__ . '/uploads/';
     if (!is_dir($uploadDir)) {
@@ -78,15 +83,19 @@ try {
 
     [$width, $height] = @getimagesize($dest) ?: [0, 0];
 
+    $thumbPath = generateThumbnail($dest, $uploadDir, $safename, $mimeReal, $width, $height);
+
+
     $stmt = $pdo->prepare(
-        'INSERT INTO photos (album_id, user_id, filename, filepath, filesize, width, height, recipe)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO photos (album_id, user_id, filename, filepath, thumb_path, filesize, width, height, recipe)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
         $albumId,
         $userId,
         $file['name'],
         'uploads/' . $safename,
+        $thumbPath,
         $file['size'],
         $width,
         $height,
@@ -97,4 +106,50 @@ try {
 
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+}
+
+function generateThumbnail(string $src, string $uploadDir, string $safename, string $mime, int $width, int $height): ?string
+{
+    if (!extension_loaded('gd') || $width === 0 || $height === 0) {
+        return null;
+    }
+
+    $maxWidth = 400;
+    if ($width <= $maxWidth) {
+        return null;
+    }
+
+    $srcImage = match ($mime) {
+        'image/jpeg' => imagecreatefromjpeg($src),
+        'image/png'  => imagecreatefrompng($src),
+        'image/gif'  => imagecreatefromgif($src),
+        'image/webp' => imagecreatefromwebp($src),
+        default      => null,
+    };
+
+    if (!$srcImage) {
+        return null;
+    }
+
+    $ratio     = $maxWidth / $width;
+    $newWidth  = $maxWidth;
+    $newHeight = (int) round($height * $ratio);
+
+    $thumb = imagecreatetruecolor($newWidth, $newHeight);
+
+    if ($mime === 'image/png') {
+        imagealphablending($thumb, false);
+        imagesavealpha($thumb, true);
+    }
+
+    imagecopyresampled($thumb, $srcImage, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+
+    $thumbName = 'thumb_' . pathinfo($safename, PATHINFO_FILENAME) . '.jpg';
+    $thumbDest = $uploadDir . $thumbName;
+
+    imagejpeg($thumb, $thumbDest, 85);
+    imagedestroy($srcImage);
+    imagedestroy($thumb);
+
+    return 'uploads/' . $thumbName;
 }

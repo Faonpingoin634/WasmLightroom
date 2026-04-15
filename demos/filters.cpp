@@ -1,69 +1,76 @@
 #include <cstdint>
+#include <cstring>
 #include <algorithm>
-#include <cmath>
 #include <emscripten.h>
+
+static inline uint8_t clamp8(int v) {
+    return v < 0 ? 0 : (v > 255 ? 255 : static_cast<uint8_t>(v));
+}
+
+static inline uint32_t pack(uint8_t r, uint8_t g, uint8_t b, uint32_t a) {
+    return a | (static_cast<uint32_t>(b) << 16) | (static_cast<uint32_t>(g) << 8) | r;
+}
 
 extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
 void apply_grayscale(uint8_t* data, int width, int height) {
-    int numPixels = width * height;
-    for (int i = 0; i < numPixels; i++) {
-        uint8_t r = data[i * 4];
-        uint8_t g = data[i * 4 + 1];
-        uint8_t b = data[i * 4 + 2];
-        uint8_t gray = (uint8_t)(0.299f * r + 0.587f * g + 0.114f * b);
-        data[i * 4]     = gray;
-        data[i * 4 + 1] = gray;
-        data[i * 4 + 2] = gray;
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
+    int n = width * height;
+    for (int i = 0; i < n; i++) {
+        uint32_t p = px[i];
+        uint8_t gray = static_cast<uint8_t>(
+            0.299f * (p & 0xFF) + 0.587f * ((p >> 8) & 0xFF) + 0.114f * ((p >> 16) & 0xFF)
+        );
+        px[i] = pack(gray, gray, gray, p & 0xFF000000u);
     }
 }
 
 EMSCRIPTEN_KEEPALIVE
 void apply_sepia(uint8_t* data, int width, int height) {
-    int numPixels = width * height;
-    for (int i = 0; i < numPixels; i++) {
-        float r = data[i * 4];
-        float g = data[i * 4 + 1];
-        float b = data[i * 4 + 2];
-        data[i * 4]     = (uint8_t)std::min(255.0f, r * 0.393f + g * 0.769f + b * 0.189f);
-        data[i * 4 + 1] = (uint8_t)std::min(255.0f, r * 0.349f + g * 0.686f + b * 0.168f);
-        data[i * 4 + 2] = (uint8_t)std::min(255.0f, r * 0.272f + g * 0.534f + b * 0.131f);
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
+    int n = width * height;
+    for (int i = 0; i < n; i++) {
+        uint32_t p = px[i];
+        float r = p & 0xFF, g = (p >> 8) & 0xFF, b = (p >> 16) & 0xFF;
+        px[i] = pack(
+            static_cast<uint8_t>(std::min(255.0f, r * 0.393f + g * 0.769f + b * 0.189f)),
+            static_cast<uint8_t>(std::min(255.0f, r * 0.349f + g * 0.686f + b * 0.168f)),
+            static_cast<uint8_t>(std::min(255.0f, r * 0.272f + g * 0.534f + b * 0.131f)),
+            p & 0xFF000000u
+        );
     }
 }
 
 EMSCRIPTEN_KEEPALIVE
 void apply_invert(uint8_t* data, int width, int height) {
-    int numPixels = width * height;
-    for (int i = 0; i < numPixels; i++) {
-        data[i * 4]     = 255 - data[i * 4];
-        data[i * 4 + 1] = 255 - data[i * 4 + 1];
-        data[i * 4 + 2] = 255 - data[i * 4 + 2];
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
+    int n = width * height;
+    for (int i = 0; i < n; i++) {
+        px[i] ^= 0x00FFFFFFu;
     }
 }
 
 EMSCRIPTEN_KEEPALIVE
 void apply_blur(uint8_t* data, int width, int height) {
     const int kernel[3][3] = {{1,2,1},{2,4,2},{1,2,1}};
-    const int kernelSum = 16;
-    uint8_t* tmp = new uint8_t[width * height * 4];
-    for (int i = 0; i < width * height * 4; i++) tmp[i] = data[i];
+    uint32_t* px  = reinterpret_cast<uint32_t*>(data);
+    uint32_t* tmp = new uint32_t[width * height];
+    std::memcpy(tmp, px, width * height * 4);
     for (int y = 1; y < height - 1; y++) {
         for (int x = 1; x < width - 1; x++) {
             int r = 0, g = 0, b = 0;
             for (int ky = -1; ky <= 1; ky++) {
                 for (int kx = -1; kx <= 1; kx++) {
-                    int idx = ((y + ky) * width + (x + kx)) * 4;
+                    uint32_t p = tmp[(y + ky) * width + (x + kx)];
                     int w = kernel[ky + 1][kx + 1];
-                    r += tmp[idx]     * w;
-                    g += tmp[idx + 1] * w;
-                    b += tmp[idx + 2] * w;
+                    r += (p & 0xFF) * w;
+                    g += ((p >> 8)  & 0xFF) * w;
+                    b += ((p >> 16) & 0xFF) * w;
                 }
             }
-            int idx = (y * width + x) * 4;
-            data[idx]     = (uint8_t)(r / kernelSum);
-            data[idx + 1] = (uint8_t)(g / kernelSum);
-            data[idx + 2] = (uint8_t)(b / kernelSum);
+            uint32_t src = tmp[y * width + x];
+            px[y * width + x] = pack(r / 16, g / 16, b / 16, src & 0xFF000000u);
         }
     }
     delete[] tmp;
@@ -71,81 +78,92 @@ void apply_blur(uint8_t* data, int width, int height) {
 
 EMSCRIPTEN_KEEPALIVE
 void apply_brightness(uint8_t* data, int width, int height, int delta) {
-    int numPixels = width * height;
-    for (int i = 0; i < numPixels; i++) {
-        data[i * 4]     = (uint8_t)std::min(255, std::max(0, (int)data[i * 4]     + delta));
-        data[i * 4 + 1] = (uint8_t)std::min(255, std::max(0, (int)data[i * 4 + 1] + delta));
-        data[i * 4 + 2] = (uint8_t)std::min(255, std::max(0, (int)data[i * 4 + 2] + delta));
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
+    int n = width * height;
+    for (int i = 0; i < n; i++) {
+        uint32_t p = px[i];
+        px[i] = pack(
+            clamp8((p & 0xFF)         + delta),
+            clamp8(((p >> 8)  & 0xFF) + delta),
+            clamp8(((p >> 16) & 0xFF) + delta),
+            p & 0xFF000000u
+        );
     }
 }
 
 EMSCRIPTEN_KEEPALIVE
 void apply_contrast(uint8_t* data, int width, int height, int value) {
     float factor = (259.0f * (value + 255)) / (255.0f * (259 - value));
-    int numPixels = width * height;
-    for (int i = 0; i < numPixels; i++) {
-        data[i * 4]     = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i * 4]     - 128) + 128));
-        data[i * 4 + 1] = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i * 4 + 1] - 128) + 128));
-        data[i * 4 + 2] = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i * 4 + 2] - 128) + 128));
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
+    int n = width * height;
+    for (int i = 0; i < n; i++) {
+        uint32_t p = px[i];
+        px[i] = pack(
+            clamp8(static_cast<int>(factor * ((p & 0xFF)         - 128) + 128)),
+            clamp8(static_cast<int>(factor * (((p >> 8)  & 0xFF) - 128) + 128)),
+            clamp8(static_cast<int>(factor * (((p >> 16) & 0xFF) - 128) + 128)),
+            p & 0xFF000000u
+        );
     }
 }
 
-// ── Retouche ciblée par zone ──────────────────────────────────────────────
-// Chaque fonction applique le filtre uniquement aux pixels situés
-// à l'intérieur d'un rayon `radius` depuis le point (cx, cy).
-
 EMSCRIPTEN_KEEPALIVE
 void apply_grayscale_zone(uint8_t* data, int width, int height, int cx, int cy, int radius) {
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
     int r2 = radius * radius;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             int dx = x - cx, dy = y - cy;
             if (dx * dx + dy * dy > r2) continue;
-            int i = (y * width + x) * 4;
-            uint8_t gray = (uint8_t)(0.299f * data[i] + 0.587f * data[i+1] + 0.114f * data[i+2]);
-            data[i] = data[i+1] = data[i+2] = gray;
+            uint32_t p = px[y * width + x];
+            uint8_t gray = static_cast<uint8_t>(
+                0.299f * (p & 0xFF) + 0.587f * ((p >> 8) & 0xFF) + 0.114f * ((p >> 16) & 0xFF)
+            );
+            px[y * width + x] = pack(gray, gray, gray, p & 0xFF000000u);
         }
     }
 }
 
 EMSCRIPTEN_KEEPALIVE
 void apply_sepia_zone(uint8_t* data, int width, int height, int cx, int cy, int radius) {
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
     int r2 = radius * radius;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             int dx = x - cx, dy = y - cy;
             if (dx * dx + dy * dy > r2) continue;
-            int i = (y * width + x) * 4;
-            float r = data[i], g = data[i+1], b = data[i+2];
-            data[i]   = (uint8_t)std::min(255.0f, r * 0.393f + g * 0.769f + b * 0.189f);
-            data[i+1] = (uint8_t)std::min(255.0f, r * 0.349f + g * 0.686f + b * 0.168f);
-            data[i+2] = (uint8_t)std::min(255.0f, r * 0.272f + g * 0.534f + b * 0.131f);
+            uint32_t p = px[y * width + x];
+            float r = p & 0xFF, g = (p >> 8) & 0xFF, b = (p >> 16) & 0xFF;
+            px[y * width + x] = pack(
+                static_cast<uint8_t>(std::min(255.0f, r * 0.393f + g * 0.769f + b * 0.189f)),
+                static_cast<uint8_t>(std::min(255.0f, r * 0.349f + g * 0.686f + b * 0.168f)),
+                static_cast<uint8_t>(std::min(255.0f, r * 0.272f + g * 0.534f + b * 0.131f)),
+                p & 0xFF000000u
+            );
         }
     }
 }
 
 EMSCRIPTEN_KEEPALIVE
 void apply_invert_zone(uint8_t* data, int width, int height, int cx, int cy, int radius) {
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
     int r2 = radius * radius;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             int dx = x - cx, dy = y - cy;
             if (dx * dx + dy * dy > r2) continue;
-            int i = (y * width + x) * 4;
-            data[i]   = 255 - data[i];
-            data[i+1] = 255 - data[i+1];
-            data[i+2] = 255 - data[i+2];
+            px[y * width + x] ^= 0x00FFFFFFu;
         }
     }
 }
 
 EMSCRIPTEN_KEEPALIVE
 void apply_blur_zone(uint8_t* data, int width, int height, int cx, int cy, int radius) {
-    int r2 = radius * radius;
     const int kernel[3][3] = {{1,2,1},{2,4,2},{1,2,1}};
-    const int kernelSum = 16;
-    uint8_t* tmp = new uint8_t[width * height * 4];
-    for (int i = 0; i < width * height * 4; i++) tmp[i] = data[i];
+    uint32_t* px  = reinterpret_cast<uint32_t*>(data);
+    uint32_t* tmp = new uint32_t[width * height];
+    std::memcpy(tmp, px, width * height * 4);
+    int r2 = radius * radius;
     for (int y = 1; y < height - 1; y++) {
         for (int x = 1; x < width - 1; x++) {
             int dx = x - cx, dy = y - cy;
@@ -153,15 +171,15 @@ void apply_blur_zone(uint8_t* data, int width, int height, int cx, int cy, int r
             int r = 0, g = 0, b = 0;
             for (int ky = -1; ky <= 1; ky++) {
                 for (int kx = -1; kx <= 1; kx++) {
-                    int idx = ((y + ky) * width + (x + kx)) * 4;
-                    int w = kernel[ky+1][kx+1];
-                    r += tmp[idx] * w; g += tmp[idx+1] * w; b += tmp[idx+2] * w;
+                    uint32_t p = tmp[(y + ky) * width + (x + kx)];
+                    int w = kernel[ky + 1][kx + 1];
+                    r += (p & 0xFF) * w;
+                    g += ((p >> 8)  & 0xFF) * w;
+                    b += ((p >> 16) & 0xFF) * w;
                 }
             }
-            int idx = (y * width + x) * 4;
-            data[idx]   = (uint8_t)(r / kernelSum);
-            data[idx+1] = (uint8_t)(g / kernelSum);
-            data[idx+2] = (uint8_t)(b / kernelSum);
+            uint32_t src = tmp[y * width + x];
+            px[y * width + x] = pack(r / 16, g / 16, b / 16, src & 0xFF000000u);
         }
     }
     delete[] tmp;
@@ -169,15 +187,19 @@ void apply_blur_zone(uint8_t* data, int width, int height, int cx, int cy, int r
 
 EMSCRIPTEN_KEEPALIVE
 void apply_brightness_zone(uint8_t* data, int width, int height, int delta, int cx, int cy, int radius) {
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
     int r2 = radius * radius;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             int dx = x - cx, dy = y - cy;
             if (dx * dx + dy * dy > r2) continue;
-            int i = (y * width + x) * 4;
-            data[i]   = (uint8_t)std::min(255, std::max(0, (int)data[i]   + delta));
-            data[i+1] = (uint8_t)std::min(255, std::max(0, (int)data[i+1] + delta));
-            data[i+2] = (uint8_t)std::min(255, std::max(0, (int)data[i+2] + delta));
+            uint32_t p = px[y * width + x];
+            px[y * width + x] = pack(
+                clamp8((p & 0xFF)         + delta),
+                clamp8(((p >> 8)  & 0xFF) + delta),
+                clamp8(((p >> 16) & 0xFF) + delta),
+                p & 0xFF000000u
+            );
         }
     }
 }
@@ -185,15 +207,19 @@ void apply_brightness_zone(uint8_t* data, int width, int height, int delta, int 
 EMSCRIPTEN_KEEPALIVE
 void apply_contrast_zone(uint8_t* data, int width, int height, int value, int cx, int cy, int radius) {
     float factor = (259.0f * (value + 255)) / (255.0f * (259 - value));
+    uint32_t* px = reinterpret_cast<uint32_t*>(data);
     int r2 = radius * radius;
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             int dx = x - cx, dy = y - cy;
             if (dx * dx + dy * dy > r2) continue;
-            int i = (y * width + x) * 4;
-            data[i]   = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i]   - 128) + 128));
-            data[i+1] = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i+1] - 128) + 128));
-            data[i+2] = (uint8_t)std::min(255.0f, std::max(0.0f, factor * (data[i+2] - 128) + 128));
+            uint32_t p = px[y * width + x];
+            px[y * width + x] = pack(
+                clamp8(static_cast<int>(factor * ((p & 0xFF)         - 128) + 128)),
+                clamp8(static_cast<int>(factor * (((p >> 8)  & 0xFF) - 128) + 128)),
+                clamp8(static_cast<int>(factor * (((p >> 16) & 0xFF) - 128) + 128)),
+                p & 0xFF000000u
+            );
         }
     }
 }

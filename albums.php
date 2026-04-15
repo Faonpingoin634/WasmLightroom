@@ -56,8 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'unshare') {
         $albumId  = (int) ($_POST['album_id'] ?? 0);
         $targetId = (int) ($_POST['target_user_id'] ?? 0);
-        $pdo->prepare('DELETE FROM album_shares WHERE album_id=? AND user_id=?')
-            ->execute([$albumId, $targetId]);
+        $pdo->prepare(
+            'DELETE FROM album_shares WHERE album_id = ? AND user_id = ?
+             AND EXISTS (SELECT 1 FROM albums WHERE id = ? AND user_id = ?)'
+        )->execute([$albumId, $targetId, $albumId, $userId]);
         $ok = 'Partage retiré.';
     }
 }

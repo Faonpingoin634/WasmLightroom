@@ -23,6 +23,7 @@ function getPDO(): PDO {
                 FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
                 FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+            "ALTER TABLE photos ADD COLUMN thumb_path VARCHAR(500) DEFAULT NULL",
         ];
         foreach ($migrations as $sql) {
             try { $pdo->exec($sql); } catch (PDOException) {}

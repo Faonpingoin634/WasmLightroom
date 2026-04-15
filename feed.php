@@ -14,9 +14,8 @@ $limit  = 10;
 $page   = max(1, (int) ($_GET['page'] ?? 1));
 $offset = ($page - 1) * $limit;
 
-// --- Requête principale : photos publiques + partagées avec moi + les miennes ---
 $sql = "
-    SELECT p.id, p.filename, p.filepath, p.recipe, p.created_at,
+    SELECT p.id, p.filename, p.filepath, p.thumb_path, p.recipe, p.created_at,
            p.width, p.height, p.filesize,
            u.username, a.name AS album_name, a.visibility
     FROM photos p
@@ -44,7 +43,6 @@ $stmt->bindValue(':off',  $offset, PDO::PARAM_INT);
 $stmt->execute();
 $photos = $stmt->fetchAll();
 
-// --- Compte total pour la pagination ---
 $sqlCount = "
     SELECT COUNT(*) FROM photos p
     JOIN albums a ON p.album_id = a.id
@@ -115,7 +113,7 @@ function visibilityBadge(string $vis): string {
         <div class="col-md-4 col-lg-3">
             <div class="card h-100 shadow-sm">
                 <div style="height:180px;overflow:hidden;background:#222;display:flex;align-items:center;justify-content:center;">
-                    <img src="<?= htmlspecialchars($photo['filepath']) ?>"
+                    <img src="<?= htmlspecialchars($photo['thumb_path'] ?? $photo['filepath']) ?>"
                          alt="<?= htmlspecialchars($photo['filename']) ?>"
                          style="max-height:180px;max-width:100%;object-fit:contain;">
                 </div>
@@ -134,10 +132,10 @@ function visibilityBadge(string $vis): string {
                             <span class="badge bg-dark"><?= htmlspecialchars($filterLabel) ?></span>
                         <?php endif; ?>
                         <?php if ($recipe && ($recipe['brightness'] ?? 0) != 0): ?>
-                            <span class="badge bg-warning text-dark"><?= $recipe['brightness'] > 0 ? '+' : '' ?><?= $recipe['brightness'] ?></span>
+                            <span class="badge bg-warning text-dark"><?= (int)$recipe['brightness'] > 0 ? '+' : '' ?><?= htmlspecialchars((string)(int)$recipe['brightness']) ?></span>
                         <?php endif; ?>
                         <?php if ($recipe && ($recipe['contrast'] ?? 0) != 0): ?>
-                            <span class="badge bg-secondary"><?= $recipe['contrast'] > 0 ? '+' : '' ?><?= $recipe['contrast'] ?></span>
+                            <span class="badge bg-secondary"><?= (int)$recipe['contrast'] > 0 ? '+' : '' ?><?= htmlspecialchars((string)(int)$recipe['contrast']) ?></span>
                         <?php endif; ?>
                     </div>
                     <?php if ($photo['width'] && $photo['height']): ?>
@@ -149,7 +147,6 @@ function visibilityBadge(string $vis): string {
         <?php endforeach; ?>
     </div>
 
-    <!-- Pagination -->
     <?php if ($totalPages > 1): ?>
     <nav class="mt-4">
         <ul class="pagination justify-content-center">
