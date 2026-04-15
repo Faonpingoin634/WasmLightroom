@@ -85,6 +85,7 @@ try {
 
     $thumbPath = generateThumbnail($dest, $uploadDir, $safename, $mimeReal, $width, $height);
 
+
     $stmt = $pdo->prepare(
         'INSERT INTO photos (album_id, user_id, filename, filepath, thumb_path, filesize, width, height, recipe)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
