@@ -1,17 +1,68 @@
 let wasmModule = null;
 let originalImageData = null;
 let uploadedFile = null;
-let savedPhotoId = null; // ID BDD après le premier save
+let savedPhotoId = null;
 const canvas = document.getElementById("main-canvas");
 const ctx = canvas.getContext("2d");
 
 const currentRecipe = {
-  filter: null,      // 'grayscale' | 'sepia' | 'invert' | 'blur' | null
+  filter: null,
   brightness: 0,
   contrast: 0,
 };
 
-// Mode retouche ciblée
+const undoStack = [];
+const redoStack = [];
+const MAX_HISTORY = 20;
+
+function pushHistory() {
+  if (!originalImageData) return;
+  const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  undoStack.push({
+    data: new Uint8ClampedArray(snap.data),
+    width: snap.width,
+    height: snap.height,
+    recipe: { ...currentRecipe },
+  });
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack.length = 0;
+  updateHistoryBtns();
+}
+
+function updateHistoryBtns() {
+  document.getElementById("btn-undo").disabled = undoStack.length === 0;
+  document.getElementById("btn-redo").disabled = redoStack.length === 0;
+}
+
+function syncSliders() {
+  document.getElementById("slider-brightness").value = currentRecipe.brightness;
+  document.getElementById("val-brightness").textContent = currentRecipe.brightness;
+  document.getElementById("slider-contrast").value = currentRecipe.contrast;
+  document.getElementById("val-contrast").textContent = currentRecipe.contrast;
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  redoStack.push({ data: new Uint8ClampedArray(snap.data), width: snap.width, height: snap.height, recipe: { ...currentRecipe } });
+  const prev = undoStack.pop();
+  ctx.putImageData(new ImageData(prev.data, prev.width, prev.height), 0, 0);
+  Object.assign(currentRecipe, prev.recipe);
+  syncSliders();
+  updateHistoryBtns();
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  const snap = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  undoStack.push({ data: new Uint8ClampedArray(snap.data), width: snap.width, height: snap.height, recipe: { ...currentRecipe } });
+  const next = redoStack.pop();
+  ctx.putImageData(new ImageData(next.data, next.width, next.height), 0, 0);
+  Object.assign(currentRecipe, next.recipe);
+  syncSliders();
+  updateHistoryBtns();
+}
+
 let zoneMode = false;
 let zoneRadius = 150;
 
@@ -42,7 +93,6 @@ async function loadWasm() {
         Module.onRuntimeInitialized = resolve;
       }
     });
-
     wasmModule = Module;
     statusBadge.textContent = "WebAssembly : prêt";
     statusBadge.className = "badge bg-success";
@@ -67,7 +117,6 @@ function loadImage(file) {
       ctx.drawImage(img, 0, 0);
       originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      // Reset recipe on new image
       currentRecipe.filter = null;
       currentRecipe.brightness = 0;
       currentRecipe.contrast = 0;
@@ -83,6 +132,10 @@ function loadImage(file) {
 
       document.getElementById("img-info").textContent =
         `${img.width} × ${img.height} px — ${(file.size / 1024).toFixed(1)} Ko`;
+
+      undoStack.length = 0;
+      redoStack.length = 0;
+      updateHistoryBtns();
 
       [
         "btn-original",
@@ -102,31 +155,23 @@ function loadImage(file) {
   reader.readAsDataURL(file);
 }
 
-/**
- * Applique le contenu de currentRecipe sur originalImageData
- * en enchaînant : filtre → luminosité → contraste
- */
 function applyRecipe() {
   if (!wasmModule || !originalImageData) return;
 
-  // Étape 1 : copie de l'image originale
   let imageData = new ImageData(
     new Uint8ClampedArray(originalImageData.data),
     originalImageData.width,
     originalImageData.height
   );
 
-  // Étape 2 : filtre discret (grayscale / sepia / invert / blur)
   if (currentRecipe.filter) {
     imageData = applyWasmFn(imageData, currentRecipe.filter, null);
   }
 
-  // Étape 3 : luminosité
   if (currentRecipe.brightness !== 0) {
     imageData = applyWasmFn(imageData, "brightness", currentRecipe.brightness);
   }
 
-  // Étape 4 : contraste
   if (currentRecipe.contrast !== 0) {
     imageData = applyWasmFn(imageData, "contrast", currentRecipe.contrast);
   }
@@ -134,9 +179,6 @@ function applyRecipe() {
   ctx.putImageData(imageData, 0, 0);
 }
 
-/**
- * Exécute une fonction Wasm sur un ImageData et retourne le résultat
- */
 function applyWasmFn(imageData, filterName, value) {
   const { width, height, data } = imageData;
   const numBytes = data.length;
@@ -150,8 +192,6 @@ function applyWasmFn(imageData, filterName, value) {
     } else {
       wasmModule[fnName](ptr, width, height);
     }
-  } else {
-    console.warn(`Fonction Wasm "${fnName}" introuvable.`);
   }
 
   const result = new ImageData(
@@ -163,41 +203,36 @@ function applyWasmFn(imageData, filterName, value) {
   return result;
 }
 
-// --- Boutons filtres ---
-
 document.getElementById("btn-original").addEventListener("click", () => {
+  pushHistory();
   currentRecipe.filter = null;
   currentRecipe.brightness = 0;
   currentRecipe.contrast = 0;
-  document.getElementById("slider-brightness").value = 0;
-  document.getElementById("val-brightness").textContent = "0";
-  document.getElementById("slider-contrast").value = 0;
-  document.getElementById("val-contrast").textContent = "0";
+  syncSliders();
   if (originalImageData) ctx.putImageData(originalImageData, 0, 0);
 });
 
 ["grayscale", "sepia", "invert", "blur"].forEach((name) => {
   document.getElementById(`btn-${name}`).addEventListener("click", () => {
+    pushHistory();
     currentRecipe.filter = name;
     applyRecipe();
   });
 });
 
-// --- Sliders ---
-
+document.getElementById("slider-brightness").addEventListener("pointerdown", pushHistory);
 document.getElementById("slider-brightness").addEventListener("input", (e) => {
   currentRecipe.brightness = parseInt(e.target.value);
   document.getElementById("val-brightness").textContent = e.target.value;
   if (!zoneMode) applyRecipe();
 });
 
+document.getElementById("slider-contrast").addEventListener("pointerdown", pushHistory);
 document.getElementById("slider-contrast").addEventListener("input", (e) => {
   currentRecipe.contrast = parseInt(e.target.value);
   document.getElementById("val-contrast").textContent = e.target.value;
   if (!zoneMode) applyRecipe();
 });
-
-// --- Export PNG ---
 
 document.getElementById("btn-export").addEventListener("click", () => {
   const link = document.createElement("a");
@@ -205,8 +240,6 @@ document.getElementById("btn-export").addEventListener("click", () => {
   link.href = canvas.toDataURL("image/png");
   link.click();
 });
-
-// --- Sauvegarde AJAX ---
 
 document.getElementById("btn-save").addEventListener("click", async () => {
   if (!originalImageData) return;
@@ -220,10 +253,8 @@ document.getElementById("btn-save").addEventListener("click", async () => {
     formData.append("recipe", JSON.stringify(currentRecipe));
 
     if (savedPhotoId) {
-      // Photo déjà enregistrée → on met juste à jour la recette
       formData.append("photo_id", savedPhotoId);
     } else {
-      // Premier save → on envoie l'image originale intacte
       if (!uploadedFile) {
         btn.textContent = "Aucune image";
         return;
@@ -239,7 +270,7 @@ document.getElementById("btn-save").addEventListener("click", async () => {
     const result = await response.json();
 
     if (result.success) {
-      savedPhotoId = result.id; // retient l'ID pour les saves suivants
+      savedPhotoId = result.id;
       btn.textContent = "Sauvegardé !";
       btn.classList.replace("btn-primary", "btn-success");
     } else {
@@ -258,8 +289,6 @@ document.getElementById("btn-save").addEventListener("click", async () => {
     }, 2500);
   }
 });
-
-// --- Retouche ciblée par zone ---
 
 document.getElementById("btn-zone-mode").addEventListener("click", () => {
   zoneMode = !zoneMode;
@@ -288,9 +317,7 @@ canvas.addEventListener("mouseleave", () => {
 });
 
 canvas.addEventListener("click", (e) => {
-  if (!zoneMode) { console.log("[zone] zoneMode=false, skip"); return; }
-  if (!wasmModule) { console.log("[zone] wasmModule null, skip"); return; }
-  if (!originalImageData) { console.log("[zone] originalImageData null, skip"); return; }
+  if (!zoneMode || !wasmModule || !originalImageData) return;
 
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width  / rect.width;
@@ -298,7 +325,7 @@ canvas.addEventListener("click", (e) => {
   const cx = Math.round((e.clientX - rect.left) * scaleX);
   const cy = Math.round((e.clientY - rect.top)  * scaleY);
 
-  console.log(`[zone] click cx=${cx} cy=${cy} radius=${zoneRadius} filter=${currentRecipe.filter || "grayscale"}`);
+  pushHistory();
   applyZoneFilter(cx, cy, zoneRadius);
 });
 
@@ -311,7 +338,6 @@ function applyZoneFilter(cx, cy, radius) {
   wasmModule.HEAPU8.set(data, ptr);
 
   try {
-    // Étape 1 : filtre discret dans la zone
     if (currentRecipe.filter) {
       const fn = wasmModule[`_apply_${currentRecipe.filter}_zone`];
       if (typeof fn === "function") {
@@ -319,12 +345,10 @@ function applyZoneFilter(cx, cy, radius) {
       }
     }
 
-    // Étape 2 : luminosité dans la zone
     if (currentRecipe.brightness !== 0) {
       wasmModule._apply_brightness_zone(ptr, width, height, currentRecipe.brightness, cx, cy, radius);
     }
 
-    // Étape 3 : contraste dans la zone
     if (currentRecipe.contrast !== 0) {
       wasmModule._apply_contrast_zone(ptr, width, height, currentRecipe.contrast, cx, cy, radius);
     }
@@ -332,13 +356,11 @@ function applyZoneFilter(cx, cy, radius) {
     data.set(wasmModule.HEAPU8.subarray(ptr, ptr + numBytes));
     ctx.putImageData(imageData, 0, 0);
   } catch (err) {
-    console.error("[zone] erreur WASM:", err);
+    console.error(err);
   } finally {
     wasmModule._free(ptr);
   }
 }
-
-// --- Drag & drop ---
 
 document.getElementById("file-input").addEventListener("change", (e) => {
   loadImage(e.target.files[0]);
@@ -356,6 +378,14 @@ container.addEventListener("drop", (e) => {
   e.preventDefault();
   container.style.borderColor = "#0f3460";
   loadImage(e.dataTransfer.files[0]);
+});
+
+document.getElementById("btn-undo").addEventListener("click", undo);
+document.getElementById("btn-redo").addEventListener("click", redo);
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.key === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+  if (e.ctrlKey && (e.key === "y" || (e.key === "z" && e.shiftKey))) { e.preventDefault(); redo(); }
 });
 
 loadWasm();
