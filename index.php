@@ -4,9 +4,8 @@ require_once __DIR__ . '/config/db.php';
 
 $error   = '';
 $success = '';
-$authMode = $_GET['mode'] ?? 'login'; // 'login' | 'register'
+$authMode = $_GET['mode'] ?? 'login';
 
-// --- Inscription ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'register') {
     $username  = trim($_POST['username'] ?? '');
     $email     = trim($_POST['email'] ?? '');
@@ -33,7 +32,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
                 $pdo->prepare('INSERT INTO users (username, email, password) VALUES (?, ?, ?)')
                     ->execute([$username, $email, $hash]);
                 $userId = $pdo->lastInsertId();
-                // Crée un album par défaut pour le nouvel utilisateur
                 $pdo->prepare('INSERT INTO albums (user_id, name) VALUES (?, ?)')
                     ->execute([$userId, 'Mon album']);
                 $success  = 'Compte créé ! Vous pouvez maintenant vous connecter.';
@@ -45,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regis
     }
 }
 
-// --- Connexion ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -69,7 +66,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'login
     }
 }
 
-// --- Déconnexion ---
 if (($_POST['action'] ?? '') === 'logout') {
     session_destroy();
     header('Location: ' . $_SERVER['PHP_SELF']);
@@ -92,7 +88,6 @@ $isLoggedIn = isset($_SESSION['user_id']);
 <div class="container d-flex justify-content-center align-items-center min-vh-100">
     <div class="card p-4 shadow" style="width:380px">
 
-        <!-- Onglets Login / Inscription -->
         <ul class="nav nav-tabs mb-4">
             <li class="nav-item">
                 <a class="nav-link <?= $authMode === 'login' ? 'active' : '' ?>"
@@ -112,7 +107,6 @@ $isLoggedIn = isset($_SESSION['user_id']);
         <?php endif; ?>
 
         <?php if ($authMode === 'login'): ?>
-        <!-- Formulaire connexion -->
         <form method="POST">
             <input type="hidden" name="action" value="login">
             <div class="mb-3">
@@ -127,7 +121,6 @@ $isLoggedIn = isset($_SESSION['user_id']);
         </form>
 
         <?php else: ?>
-        <!-- Formulaire inscription -->
         <form method="POST">
             <input type="hidden" name="action" value="register">
             <div class="mb-3">
@@ -156,11 +149,15 @@ $isLoggedIn = isset($_SESSION['user_id']);
 <div class="container-fluid py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="mb-0">Éditeur d'images <span class="text-primary">WebAssembly</span></h1>
-        <form method="POST" class="mb-0">
-            <input type="hidden" name="action" value="logout">
-            <span class="me-3 text-muted">Connecté : <strong><?= htmlspecialchars($_SESSION['username']) ?></strong></span>
-            <button type="submit" class="btn btn-sm btn-outline-danger">Déconnexion</button>
-        </form>
+        <div class="d-flex align-items-center gap-3">
+            <a href="feed.php" class="btn btn-sm btn-outline-secondary">Feed</a>
+            <a href="albums.php" class="btn btn-sm btn-outline-secondary">Mes albums</a>
+            <form method="POST" class="mb-0">
+                <input type="hidden" name="action" value="logout">
+                <span class="me-3 text-muted">Connecté : <strong><?= htmlspecialchars($_SESSION['username']) ?></strong></span>
+                <button type="submit" class="btn btn-sm btn-outline-danger">Déconnexion</button>
+            </form>
+        </div>
     </div>
 
     <div class="row g-4">
@@ -183,6 +180,14 @@ $isLoggedIn = isset($_SESSION['user_id']);
                 <div class="mb-3">
                     <span id="wasm-status" class="badge bg-warning">WebAssembly : chargement...</span>
                 </div>
+
+                <p class="text-muted small">Historique</p>
+                <div class="d-flex gap-2 mb-2">
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" id="btn-undo" disabled title="Ctrl+Z">&#8617; Annuler</button>
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" id="btn-redo" disabled title="Ctrl+Y">&#8618; Rétablir</button>
+                </div>
+
+                <hr class="border-secondary">
 
                 <button class="btn btn-secondary btn-filter" id="btn-original" disabled>Image originale</button>
 
